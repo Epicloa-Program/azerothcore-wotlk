@@ -29,9 +29,6 @@ enum Spells
     // Ouro
     SPELL_SWEEP                 = 26103,
     SPELL_SAND_BLAST            = 26102,
-    SPELL_GROUND_RUPTURE        = 26100,
-    SPELL_BERSERK               = 26615,
-    SPELL_BOULDER               = 26616,
     SPELL_OURO_SUBMERGE_VISUAL  = 26063,
     SPELL_SUMMON_SANDWORM_BASE  = 26133,
 
@@ -40,7 +37,6 @@ enum Spells
     SPELL_DIRTMOUND_PASSIVE     = 26092,
     SPELL_SUMMON_OURO           = 26061,
     SPELL_SUMMON_OURO_MOUNDS    = 26058,
-    SPELL_QUAKE                 = 26093,
     SPELL_SUMMON_SCARABS        = 26060,
     SPELL_SUMMON_OURO_AURA      = 26642,
     SPELL_DREAM_FOG             = 24780
@@ -117,24 +113,7 @@ struct boss_ouro : public BossAI
 
     void DamageTaken(Unit* /*attacker*/, uint32& damage, DamageEffectType, SpellSchoolMask) override
     {
-        if (me->HealthBelowPctDamaged(20, damage) && !_enraged)
-        {
-            DoCastSelf(SPELL_BERSERK, true);
-            _enraged = true;
-            scheduler.CancelGroup(GROUP_PHASE_TRANSITION);
-            scheduler.Schedule(1s, [this](TaskContext context)
-                {
-                    if (!IsPlayerWithinMeleeRange())
-                        DoSpellAttackToRandomTargetIfReady(SPELL_BOULDER);
-
-                    context.Repeat();
-                })
-                .Schedule(20s, [this](TaskContext context)
-                    {
-                        DoCastSelf(SPELL_SUMMON_OURO_MOUNDS, true);
-                        context.Repeat();
-                    });
-        }
+        // Enrage phase removed: boulders and mound summons stripped out.
     }
 
     void Submerge()
@@ -173,23 +152,6 @@ struct boss_ouro : public BossAI
         me->DespawnOrUnsummon(1s);
     }
 
-    void CastGroundRupture()
-    {
-        std::list<WorldObject*> targets;
-        Acore::AllWorldObjectsInRange checker(me, 10.0f);
-        Acore::WorldObjectListSearcher<Acore::AllWorldObjectsInRange> searcher(me, targets, checker);
-        Cell::VisitObjects(me, searcher, 10.0f);
-
-        for (WorldObject* target : targets)
-        {
-            if (Unit* unitTarget = target->ToUnit())
-            {
-                if (unitTarget->IsHostileTo(me))
-                    DoCast(unitTarget, SPELL_GROUND_RUPTURE, true);
-            }
-        }
-    }
-
     void SpellHitTarget(Unit* target, SpellInfo const* spellInfo) override
     {
         if (spellInfo->Id == SPELL_SAND_BLAST && target)
@@ -203,7 +165,6 @@ struct boss_ouro : public BossAI
         DoCastSelf(SPELL_BIRTH);
         DoCastSelf(SPELL_SUMMON_SANDWORM_BASE, true);
         me->SetReactState(REACT_AGGRESSIVE);
-        CastGroundRupture();
         scheduler.Schedule(20s, GROUP_EMERGED, [this](TaskContext context)
                 {
                     if (Unit* target = SelectTarget(SelectTargetMethod::MaxThreat, 0, 0.0f, true))
@@ -364,8 +325,7 @@ struct npc_dirt_mound : ScriptedAI
     void Reset() override
     {
         DoCastSelf(SPELL_DIRTMOUND_PASSIVE, true);
-        DoCastSelf(SPELL_DREAM_FOG, true);
-        DoCastSelf(SPELL_QUAKE, true);
+
     }
 
     void EnterEvadeMode(EvadeReason /*why*/) override

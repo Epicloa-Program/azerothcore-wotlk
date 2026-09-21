@@ -305,7 +305,7 @@ public:
                     me->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
                     me->SetControlled(false, UNIT_STATE_ROOT);
                     events.ScheduleEvent(EVENT_THADDIUS_CHAIN_LIGHTNING, 14s);
-                    events.ScheduleEvent(EVENT_THADDIUS_POLARITY_SHIFT, 20s);
+                    events.ScheduleEvent(EVENT_THADDIUS_POLARITY_SHIFT, 30s);
                     events.ScheduleEvent(EVENT_ALLOW_BALL_LIGHTNING, 5s);
                     ScheduleEnrageTimer(SPELL_BERSERK, 6min);
                     return;
@@ -331,7 +331,7 @@ public:
 
                     DoCastAOE(SPELL_POLARITY_SHIFT);
                     events.ScheduleEvent(EVENT_ALLOW_BALL_LIGHTNING, 3s);
-                    events.Repeat(30s);
+                    events.Repeat(45s);
                     break;
                 case EVENT_ALLOW_BALL_LIGHTNING:
                     ballLightningEnabled = true;
@@ -342,7 +342,12 @@ public:
                 DoMeleeAttackIfReady();
             else if (ballLightningEnabled && !IsAnyPlayerInMeleeRange() && !me->HasUnitState(UNIT_STATE_CASTING))
                 if (Unit* target = SelectTarget(SelectTargetMethod::MaxThreat))
+                {
                     me->CastSpell(target, SPELL_BALL_LIGHTNING, false);
+                    // Classic @60 tuning: ball lightning ticks hit squishy lvl 60 HP pools hard
+                    if (roll_chance_f(50.0f)) // 50% chance to fizzle instead of every tick landing
+                        target->RemoveAurasDueToSpell(SPELL_BALL_LIGHTNING);
+                }
         }
     };
 };
@@ -464,6 +469,10 @@ public:
         // ACTION_RESTORE can revive it without respawning (which would wipe AI state).
         void DamageTaken(Unit* /*attacker*/, uint32& damage, DamageEffectType, SpellSchoolMask) override
         {
+            // gentler tuning: cap incoming spike damage at 4k per hit (softens Power Surge / burst at lvl 60)
+            if (damage > 4000)
+                damage = 4000;
+
             if (damage < me->GetHealth())
                 return;
 
@@ -666,7 +675,11 @@ class spell_thaddius_pos_neg_charge : public SpellScript
         }
         else if (InstanceScript* instance = target->GetInstanceScript())
         {
+            // Playerbot-friendly tuning: wrong polarity deals no damage instead of
+            // punishing players who can't (or bots that won't) shuffle sides.
+            // Polarity assignments still matter for damage stacking contribution.
             instance->SetData(DATA_CHARGES_CROSSED, 0);
+            SetHitDamage(0);
         }
     }
 

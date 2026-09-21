@@ -27,10 +27,6 @@ enum Spells
 {
     // ***** Main Phase 1 ********
     //Eye Spells
-    SPELL_FREEZE_ANIM                           = 16245,
-    SPELL_GREEN_BEAM                            = 26134,
-    SPELL_DARK_GLARE                            = 26029,
-    SPELL_RED_COLORATION                        = 22518,        //Probably not the right spell but looks similar
 
     //Eye Tentacles Spells
     SPELL_MIND_FLAY                             = 26143,
@@ -55,7 +51,6 @@ enum Spells
     SPELL_THRASH                                = 3391,
 
     //Giant Eye Tentacles
-    //CHAIN CASTS "SPELL_GREEN_BEAM"
 
     //Stomach Spells
     SPELL_MOUTH_TENTACLE                        = 26332,
@@ -140,11 +135,6 @@ struct boss_eye_of_cthun : public BossAI
 
     void Reset() override
     {
-        //Dark Beam phase 35 seconds (each tick = 1 second, 35 ticks)
-        DarkGlareTick = 0;
-        DarkGlareAngle = 0;
-        ClockWise = false;
-
         _eyeTentacleCounter = 0;
 
         //Reset flags
@@ -168,7 +158,6 @@ struct boss_eye_of_cthun : public BossAI
     {
         ScheduleTask(true);
         BossAI::JustEngagedWith(who);
-        _beamTarget = who->GetGUID();
     }
 
     void MoveInLineOfSight(Unit* who) override
@@ -208,26 +197,12 @@ struct boss_eye_of_cthun : public BossAI
             {
                 if (task.GetRepeatCounter() < 3 && onEngage)
                 {
-                    if (Unit* target = ObjectAccessor::GetUnit(*me, _beamTarget))
-                        DoCast(target, SPELL_GREEN_BEAM);
-
-                    task.Repeat();
+                    task.Repeat(); // Green beam removed; timing kept for pacing
                 }
                 else
                 {
-                    scheduler.Schedule(5s, [this](TaskContext task)
-                    {
-                        if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true))
-                        {
-                            DoCast(target, SPELL_GREEN_BEAM);
-                            DarkGlareAngle = me->GetAngle(target); //keep as the location dark glare will be at
-                        }
-
-                        task.SetGroup(GROUP_BEAM_PHASE);
-                        task.Repeat(3s);
-                    });
+                    // Green beam & Dark Glare removed: nothing to schedule here.
                 }
-
                 task.SetGroup(GROUP_BEAM_PHASE);
             })
             .Schedule(8s, [this](TaskContext task)
@@ -239,66 +214,13 @@ struct boss_eye_of_cthun : public BossAI
                 task.SetGroup(GROUP_BEAM_PHASE);
                 task.Repeat();
             })
-            .Schedule(45s, [this](TaskContext task)
+            .Schedule(30s, [this](TaskContext task)
             {
                 DoAction(ACTION_SPAWN_EYE_TENTACLES);
                 task.SetGroup(GROUP_BEAM_PHASE);
                 task.Repeat();
             })
-            .Schedule(46s, [this](TaskContext /*task*/)
-            {
-                scheduler.CancelGroup(GROUP_BEAM_PHASE);
-
-                me->StopMoving();
-                me->SetReactState(REACT_PASSIVE);
-                me->InterruptNonMeleeSpells(false);
-                me->SetTarget(ObjectGuid::Empty);
-
-                //Freeze animation
-                DoCastSelf(SPELL_FREEZE_ANIM, true);
-
-                scheduler.Schedule(1s, [this](TaskContext /*task*/)
-                {
-                    //Select last target that had a beam cast on it
-                    //Face our target
-
-                    DarkGlareTick = 0;
-                    ClockWise = RAND(true, false);
-
-                    //Add red coloration to C'thun
-                    DoCastSelf(SPELL_RED_COLORATION, true);
-
-                    me->StopMoving();
-                    me->SetOrientation(DarkGlareAngle);
-                    me->SetFacingTo(DarkGlareAngle);
-
-                    scheduler.Schedule(3s, [this](TaskContext tasker)
-                    {
-                        me->SetTarget(ObjectGuid::Empty);
-                        me->StopMoving();
-
-                        float angle = ClockWise ? DarkGlareAngle + DarkGlareTick * float(M_PI) / 35 : DarkGlareAngle - DarkGlareTick * float(M_PI) / 35;
-                        me->SetFacingTo(angle);
-                        me->SetOrientation(angle);
-
-                        DoCastSelf(SPELL_DARK_GLARE);
-
-                        ++DarkGlareTick;
-
-                        if (tasker.GetRepeatCounter() >= 35)
-                        {
-                            scheduler.CancelAll();
-                            me->SetReactState(REACT_AGGRESSIVE);
-                            me->RemoveAurasDueToSpell(SPELL_RED_COLORATION);
-                            me->RemoveAurasDueToSpell(SPELL_FREEZE_ANIM);
-                            me->InterruptNonMeleeSpells(false);
-                            ScheduleTask();
-                        }
-                        else
-                            tasker.Repeat(1s);
-                    });
-                });
-            });
+            ;
     }
 
     void DamageTaken(Unit*, uint32& damage, DamageEffectType, SpellSchoolMask) override
@@ -310,8 +232,6 @@ struct boss_eye_of_cthun : public BossAI
         //Fake death in phase 0 or 1 (green beam or dark glare phase)
         me->InterruptNonMeleeSpells(false);
 
-        //Remove Red coloration from c'thun
-        me->RemoveAurasDueToSpell(SPELL_RED_COLORATION);
 
         //Reset to normal emote state and prevent select and attack
         me->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_NON_ATTACKABLE);
@@ -335,13 +255,8 @@ struct boss_eye_of_cthun : public BossAI
     }
 
 private:
-    //Dark Glare phase
-    uint32 DarkGlareTick;
-    float DarkGlareAngle;
-    bool ClockWise;
 
     uint32 _eyeTentacleCounter;
-    ObjectGuid _beamTarget;
 };
 
 struct boss_cthun : public BossAI
@@ -414,7 +329,7 @@ struct boss_cthun : public BossAI
             }
 
             context.Repeat();
-        }).Schedule(30s, [this](TaskContext context)
+        }).Schedule(15s, [this](TaskContext context)
         {
             if (Creature* eye = instance->GetCreature(DATA_EYE_OF_CTHUN))
                 eye->AI()->DoAction(ACTION_SPAWN_EYE_TENTACLES);
@@ -433,7 +348,7 @@ struct boss_cthun : public BossAI
                 if (Creature* spawned = me->SummonCreature(NPC_GIANT_EYE_TENTACLE, *target, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5000))
                     spawned->AI()->AttackStart(target);
 
-            context.Repeat(1min);
+            context.Repeat(45s);
         });
     }
 
@@ -801,13 +716,8 @@ struct npc_giant_eye_tentacle : public ScriptedAI
         scheduler.Schedule(500ms, [this](TaskContext /*task*/)
         {
             DoCastAOE(SPELL_MASSIVE_GROUND_RUPTURE);
-        }).Schedule(1s, 5s, [this](TaskContext context)
-        {
-            if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, NotInStomachSelector()))
-                DoCast(target, SPELL_GREEN_BEAM);
-
-            context.Repeat(2100ms);
         });
+        // Green beam removed: body no longer pulses beams at random raid members.
     }
 
     void JustEngagedWith(Unit* /*who*/) override

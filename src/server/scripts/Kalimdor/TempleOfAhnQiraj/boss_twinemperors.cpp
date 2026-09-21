@@ -29,7 +29,6 @@ enum Spells
     SPELL_TWIN_EMPATHY            = 1177,
     SPELL_TWIN_TELEPORT_1         = 800,
     SPELL_TWIN_TELEPORT_VISUAL    = 26638,
-    SPELL_HEAL_BROTHER            = 7393,
     // Vek'lor
     SPELL_SHADOW_BOLT             = 26006,
     SPELL_BLIZZARD                = 26607,
@@ -253,16 +252,6 @@ struct boss_twinemperorsAI : public BossAI
                 }
                 else
                     DoCastSelf(SPELL_BERSERK, true);
-            })
-            .Schedule(3600ms, [this](TaskContext context) // according to sniffs it should be casted by both emperors.
-            {
-                if (Creature* twin = GetTwin())
-                {
-                    if (me->IsWithinDist(twin, 60.f))
-                        DoCast(twin, SPELL_HEAL_BROTHER, true);
-                }
-
-                context.Repeat();
             });
     }
 
